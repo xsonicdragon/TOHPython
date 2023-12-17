@@ -1,134 +1,134 @@
-import os, struct, sys
+from dataclasses import dataclass
+import struct
+from typing import Optional
+from ..formats.FileIO import FileIO
+import os
+from pathlib import Path
+import subprocess
 
-def dump_fps4(name, name2, base_path):
 
-    with open(name, 'rb') as f:
-    
-        head, tail = os.path.split(name)
-        file_name = tail.split(".")[0]
-        
-        fps4 = f.read(4)
-        if fps4 != b'FPS4':
-            #print("Wrong file.")
-            return
-            
-        file_number = struct.unpack('<L', f.read(4))[0]
-        header_size = struct.unpack('<L', f.read(4))[0]
-        offset = struct.unpack('<L', f.read(4))[0]
-        block_size = struct.unpack('<H', f.read(2))[0]
-        
-        if block_size == 0x2C:
-            f.seek(header_size, 0)
-            files_offsets = []
-            files_sizes = []
-            files_names = []
-            
-            for i in range(file_number-1):
-                files_offsets.append(struct.unpack('<L', f.read(4))[0])
-                files_sizes.append(struct.unpack('<L', f.read(4))[0])
-                f.read(4) # File size
-                fname = f.read(block_size-0xC).decode("ASCII").strip('\x00')
-                files_names.append(fname)
-                
-            try:
-                
-                os.mkdir(os.path.join(base_path,file_name.upper()))
-            except:
-                pass
-    
-            if offset != 0x00:
-                for i in range(file_number-1):
-                    o = open(os.path.join(base_path, file_name.upper(),files_names[i]), 'wb')
-                    f.seek(files_offsets[i], 0)
-                    o.write(f.read(files_sizes[i]))
-                    o.close()
-            else:
-                with open(name2, 'rb') as f2:
-                    for i in range(file_number-1):
-                        o = open(os.path.join(base_path, file_name.upper(), files_names[i]), 'wb')
-                        f2.seek(files_offsets[i], 0)
-                        o.write(f2.read(files_sizes[i]))
-                        o.close()
-         
+@dataclass
+class fps4_file():
+    c_type:str
+    data:bytes
+    name:str
+    size:int
 
-def dump_folder(folder):
-    
-    os.chdir(folder)
 
-    # Only for m.b & m.dat
-    for f in os.listdir(os.getcwd()):
-        if '.B' in f:
-            dump_fps4(f, f.split('.')[0]+'.MAPBIN')
-        print ("Extracting %s" % f)
+class Fps4():
 
-def pack_folder(folder, dat='.dat'):
-    
-    buffer = 0
-    files_sizes = []
-    files_names = []
-    b_file = open(folder + '.b', 'wb')
-    dat_file = open(folder + dat, 'wb')
-    files = [ele for ele in os.listdir(folder) if os.path.isfile(folder + '/' + ele)]
-    
-    for n in files:
-        f = open(os.path.join(folder, n), 'rb')
-        files_names.append(n)
-        data = f.read()
-        dat_file.write(data)
-        files_sizes.append(len(data))
-        f.close()
+    def __init__(self, detail_path:Path, header_path:Path = None) -> None:
+        self.type = -1
+        self.align = False
+        self.files = []
+        self.header_path = header_path or detail_path
+        self.detail_path = detail_path
 
-    dat_file.close()
+        self.extract_information()
 
-    b_file.write(b'\x46\x50\x53\x34') # FPS4
-    b_file.write(struct.pack('<L', len(files) + 1))
-    b_file.write(struct.pack('<L', 0x1C))
-    b_file.write(b'\x00' * 4 + b'\x2C\x00\x0F\x00\x01\x01\x00\x00' +  b'\x00' * 4)
+    @staticmethod
+    def from_path(path:Path) -> 'Fps4':
 
-    for i in range(len(files)):
-        b_file.write(struct.pack('<L', buffer))
-        b_file.write(struct.pack('<L', files_sizes[i]))
-        b_file.write(struct.pack('<L', files_sizes[i]))
-        b_file.write(files_names[i].encode())
-        b_file.write(b'\x00' * (32 - (len(files_names[i]) % 32)))
-        buffer += files_sizes[i]
+        self = Fps4()
+        self.detail_path = path
+        self.header_path = self.look_for_header(path)
 
-    b_file.write(struct.pack('<L', buffer) + b'\x00'*12)
-    b_file.close()
+    def extract_information(self):
+        with FileIO(self.header_path) as f:
+            f.seek(4,0)
+            file_amount = f.read_uint32()
+            header_size = f.read_uint32()
+            offset = f.read_uint32()
+            block_size = f.read_uint16()
 
-def pack_all(folder):
-    
-    os.chdir(folder)
-    
-    for d in os.listdir(os.getcwd()):
-        if os.path.isdir(d):
-            pack_folder(d)
-            print ("Packing %s" % d)
+            self.files = []
+            files_infos = []
 
-def pack_m(folder):
-    
-    os.chdir(folder)
-    
-    for d in os.listdir(os.getcwd()):
-        if os.path.isdir(d):
-            pack_folder(d, '.MAPBIN')
-            print ("Packing %s" % d)
+            if offset == 0x0:
+                f.seek(header_size, 0)
+
+                if self.header_path != "":
+                    self.header_name = os.path.basename(self.header_path)
+                    with FileIO(self.detail_path) as det:
+                        for _ in range(file_amount-1):
+                            offset = f.read_uint32()
+                            size = f.read_uint32()
+                            f.read_uint32()
+                            name = f.read(block_size - 0xC).decode("ASCII").strip('\x00')
+                            files_infos.append( (offset, size, name))
+
+                        for offset, size, name in files_infos:
+                            det.seek(offset)
+                            data = det.read(size)
+
+                            c_type = 'None'
+                            if data[0] == 0x10:
+                                c_type = 'LZ10'
+                            elif data[0] == 0x11:
+                                c_type = 'LZ11'
+
+                            self.files.append(fps4_file(c_type, data, name, size))
+
+    def extract_files(self, destination_path, decompressed=False):
+
+        destination_path.mkdir(parents=True, exist_ok=True)
+        for file in self.files:
+            with open(destination_path / file.name, 'wb') as f:
+                f.write(file.data)
+
+            #Decompress using LZ10 or LZ11
+            if decompressed:
+                if file.c_type == 'LZ10':
+                    args = ['lzss', '-d', file.name]
+                    subprocess.run(args, cwd=destination_path)
+
+    def pack_file(self, updated_file_path:Path, destination_folder:Path):
+        buffer = 0
 
 
 
-if __name__ == '__main__':
-    print("allo")
-    if sys.argv[1] == '-d':
-        dump_fps4(sys.argv[2], sys.argv[3], sys.argv[4])
-    elif sys.argv[1] == '-dm':
-        dump_folder(sys.argv[2])
-    elif sys.argv[1] == '-i':
-        pack_folder(sys.argv[2])
-    elif sys.argv[1] == '-ia':
-        pack_all(sys.argv[2])
-    elif sys.argv[1] == '-im':
-        pack_m(sys.argv[2])
-        print ("Done!")
+        with FileIO(updated_file_path / os.path.basename(self.detail_path), "wb") as fps4_detail:
 
-        
-    sys.exit(1)
+            #Writing new dat file and updating file attributes
+            for file in self.files:
+                # Compress using LZ10
+                args = ['lzss', '-evn', file.name]
+                subprocess.run(args, cwd= updated_file_path / 'tss')
+
+                with FileIO(updated_file_path / file.name, 'rb') as sub_file:
+                    file.data = sub_file.read()
+                    file.size = len(file.data)
+                    fps4_detail.write(file.data)
+
+        with FileIO(updated_file_path / os.path.basename(self.header_path), "wb") as fps4_header:
+
+            #Header of the file
+            fps4_header.write(b'\x46\x50\x53\x34')  # FPS4
+            fps4_header.write(struct.pack('<L', len(self.files) + 1))
+            fps4_header.write(struct.pack('<L', 0x1C))
+            fps4_header.write(b'\x00' * 4 + b'\x2C\x00\x0F\x00\x01\x01\x00\x00' + b'\x00' * 4)
+
+            #Updating Offsets, File Size and File Name
+            for file in self.files:
+                fps4_header.write(struct.pack('<L', buffer))
+                fps4_header.write(struct.pack('<L', file.size))
+                fps4_header.write(struct.pack('<L', file.size - 8))
+                fps4_header.write(file.name.encode())
+                fps4_header.write(b'\x00' * (32 - (len(file.name) % 32)))
+                buffer += file.size
+
+            fps4_header.write(struct.pack('<L', buffer) + b'\x00' * 12)
+            fps4_header.close()
+    def look_for_header(self, path:Path):
+
+        base_name = os.path.basename(path).split('.')[0]
+        header_found = [ele for ele in os.listdir(path.parent) if ele.endswith('.b') and ele.split('.')[0] == base_name]
+
+        if len(header_found) > 0:
+            print(f'header was found: {header_found[0]}')
+            return path.parent / header_found[0]
+        else:
+            return None
+
+
+    #def get_fps4_type(self):
