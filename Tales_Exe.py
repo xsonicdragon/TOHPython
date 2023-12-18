@@ -193,7 +193,7 @@ if __name__ == "__main__":
             elif args.file_type == "Skits":
                 tales_instance.pack_all_skits()
 
-            elif args.file_type == "Skits":
+            elif args.file_type == "Story":
                 tales_instance.pack_all_story()
 
         elif args.file_type == "Main":
@@ -223,6 +223,7 @@ if __name__ == "__main__":
         if game_name == "TOH":
 
             if args.file_type == "Menu":
+                #tales_instance.unpack_menu_files()
                 tales_instance.extract_all_menu()
 
             if args.file_type == "Iso":

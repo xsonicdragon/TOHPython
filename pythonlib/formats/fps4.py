@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import struct
 from typing import Optional
 from ..formats.FileIO import FileIO
+from ..formats.tss import Tss
 import os
 from pathlib import Path
 import subprocess
@@ -14,60 +15,102 @@ class fps4_file():
     name:str
     size:int
 
+dict_buffer = {
+    0x2C:16,
+    0x28:32
+}
 
 class Fps4():
 
-    def __init__(self, detail_path:Path, header_path:Path = None) -> None:
+    def __init__(self, header_path:Path , detail_path:Path = None) -> None:
         self.type = -1
         self.align = False
         self.files = []
-        self.header_path = header_path or detail_path
-        self.detail_path = detail_path
+        self.header_path = header_path
+        self.file_size = os.path.getsize(header_path)
+        self.detail_path = detail_path or header_path
 
         self.extract_information()
 
-    @staticmethod
-    def from_path(path:Path) -> 'Fps4':
-
-        self = Fps4()
-        self.detail_path = path
-        self.header_path = self.look_for_header(path)
-
     def extract_information(self):
-        with FileIO(self.header_path) as f:
-            f.seek(4,0)
-            file_amount = f.read_uint32()
-            header_size = f.read_uint32()
-            offset = f.read_uint32()
-            block_size = f.read_uint16()
+        with FileIO(self.header_path) as f_header:
+            f_header.seek(4,0)
+            self.file_amount = f_header.read_uint32()-1
+            self.header_size = f_header.read_uint32()
+            self.offset = f_header.read_uint32()
+            self.block_size = f_header.read_uint16()
 
             self.files = []
-            files_infos = []
 
-            if offset == 0x0:
-                f.seek(header_size, 0)
 
-                if self.header_path != "":
-                    self.header_name = os.path.basename(self.header_path)
-                    with FileIO(self.detail_path) as det:
-                        for _ in range(file_amount-1):
-                            offset = f.read_uint32()
-                            size = f.read_uint32()
-                            f.read_uint32()
-                            name = f.read(block_size - 0xC).decode("ASCII").strip('\x00')
-                            files_infos.append( (offset, size, name))
+            if self.offset == 0x0:
+                self.pack_file = self.pack_fps4_type1
 
-                        for offset, size, name in files_infos:
-                            det.seek(offset)
-                            data = det.read(size)
+                if self.block_size == 0x2C:
+                    self.read_more = True
+                    self.extract_type1_fps4(f_header=f_header)
 
-                            c_type = 'None'
-                            if data[0] == 0x10:
-                                c_type = 'LZ10'
-                            elif data[0] == 0x11:
-                                c_type = 'LZ11'
+                elif self.block_size == 0x28:
+                    self.read_more = False
+                    self.extract_type1_fps4(f_header=f_header)
 
-                            self.files.append(fps4_file(c_type, data, name, size))
+            else:
+                self.pack_file = self.pack_fps4_type1
+                self.extract_type2_fps4(f_header=f_header)
+    #Type 2 = Header with File offset
+    def extract_type2_fps4(self, f_header:FileIO):
+
+        #Read all the files offsets
+        files_offset = []
+        f_header.seek(self.header_size,0)
+        for _ in range(self.file_amount):
+            files_offset.append(f_header.read_uint32())
+        files_offset.append(self.file_size)
+
+        #Create each file
+        for i in range(len(files_offset)-1):
+            f_header.seek(files_offset[i], 0)
+            size = files_offset[i+1] - files_offset[i]
+            data = f_header.read(size)
+            c_type = 'None'
+
+            if data[0] == 0x10:
+                c_type = 'LZ10'
+            elif data[0] == 0x11:
+                c_type = 'LZ11'
+
+            self.files.append(fps4_file(c_type, data, f'{i}.bin', size))
+
+
+    #Type 1 = Header + Detail
+    def extract_type1_fps4(self, f_header:FileIO):
+        self.type = 1
+        files_infos = []
+        f_header.seek(self.header_size, 0)
+
+        with FileIO(self.detail_path) as det:
+            for _ in range(self.file_amount):
+                offset = f_header.read_uint32()
+                size = f_header.read_uint32()
+
+                if self.read_more:
+                    f_header.read_uint32()
+                name = f_header.read(32).decode("ASCII").strip('\x00')
+                files_infos.append((offset, size, name))
+
+            for offset, size, name in files_infos:
+                #print(f'name: {name} - size: {size}')
+
+                det.seek(offset)
+                data = det.read(size)
+
+                c_type = 'None'
+                if data[0] == 0x10:
+                    c_type = 'LZ10'
+                elif data[0] == 0x11:
+                    c_type = 'LZ11'
+
+                self.files.append(fps4_file(c_type, data, name, size))
 
     def extract_files(self, destination_path, decompressed=False):
 
@@ -82,43 +125,64 @@ class Fps4():
                     args = ['lzss', '-d', file.name]
                     subprocess.run(args, cwd=destination_path)
 
-    def pack_file(self, updated_file_path:Path, destination_folder:Path):
+            with open(destination_path / file.name, 'rb') as f:
+                head = f.read(4)
+
+                if head == b'FPS4':
+                    file.file_extension = 'FPS4'
+                elif head[:-1] == b'TSS':
+                    file.file_extension = 'TSS'
+
+    def compress_file(self, updated_file_path:Path, file_name:str, c_type:str):
+        args = []
+        if c_type == 'LZ10':
+            args = ['lzss', '-evn', file_name]
+        elif c_type == "LZ11":
+            args = ['lzx', '-evb', file_name]
+        subprocess.run(args, cwd=updated_file_path)
+    def pack_fps4_type1(self, updated_file_path:Path, destination_folder:Path):
         buffer = 0
 
-
-
-        with FileIO(updated_file_path / os.path.basename(self.detail_path), "wb") as fps4_detail:
+        #Update detail file
+        with FileIO(destination_folder / self.detail_path.name, "wb") as fps4_detail:
 
             #Writing new dat file and updating file attributes
             for file in self.files:
-                # Compress using LZ10
-                args = ['lzss', '-evn', file.name]
-                subprocess.run(args, cwd= updated_file_path / 'tss')
+                #self.compress_file(updated_file_path, file_name=file.name, c_type=file.c)
 
                 with FileIO(updated_file_path / file.name, 'rb') as sub_file:
                     file.data = sub_file.read()
                     file.size = len(file.data)
                     fps4_detail.write(file.data)
 
-        with FileIO(updated_file_path / os.path.basename(self.header_path), "wb") as fps4_header:
+        #Update header file
+        with FileIO(destination_folder / self.header_path.name, "r+b") as fps4_header:
 
-            #Header of the file
-            fps4_header.write(b'\x46\x50\x53\x34')  # FPS4
-            fps4_header.write(struct.pack('<L', len(self.files) + 1))
-            fps4_header.write(struct.pack('<L', 0x1C))
-            fps4_header.write(b'\x00' * 4 + b'\x2C\x00\x0F\x00\x01\x01\x00\x00' + b'\x00' * 4)
-
-            #Updating Offsets, File Size and File Name
+            fps4_header.seek(self.header_size,0)
             for file in self.files:
                 fps4_header.write(struct.pack('<L', buffer))
                 fps4_header.write(struct.pack('<L', file.size))
-                fps4_header.write(struct.pack('<L', file.size - 8))
+
+                if self.read_more:
+                    fps4_header.write(struct.pack('<L', file.size))
+
                 fps4_header.write(file.name.encode())
                 fps4_header.write(b'\x00' * (32 - (len(file.name) % 32)))
                 buffer += file.size
 
             fps4_header.write(struct.pack('<L', buffer) + b'\x00' * 12)
-            fps4_header.close()
+
+
+    def get_file_extension(self, file_path:Path):
+
+        with open(file_path, "rb") as f:
+            data = f.read(10)
+
+            if data[:4] == b'FPS4':
+                return 'FPS4'
+            elif data[:3] == b'TSS':
+                return 'TSS'
+
     def look_for_header(self, path:Path):
 
         base_name = os.path.basename(path).split('.')[0]
