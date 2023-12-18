@@ -622,6 +622,7 @@ class ToolsTales:
         if max_len != 0:
             etree.SubElement(entry_node,"MaxLength").text = str(max_len)
 
+        print(text)
         text_split = re.split(self.COMMON_TAG, text)
         
         if len(text_split) > 1 and any(possible_value in text for possible_value in self.VALID_VOICEID):
