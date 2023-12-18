@@ -55,7 +55,7 @@ class ToolsTOH(ToolsTales):
         self.changed_only = changed_only
         self.repo_path = str(base_path)
         self.file_dict = {
-            "skit": "data/fc",
+            "skit": "data/fc/fcscr",
             "story": "data/m"
         }
 
@@ -502,6 +502,7 @@ class ToolsTOH(ToolsTales):
                 f.write_uint16_at(_l, val_lo)
 
         print(hex(f.tell()))
+
     def get_node_bytes(self, entry_node, pad=False) -> bytes:
 
         # Grab the fields from the Entry in the XML
@@ -510,33 +511,34 @@ class ToolsTOH(ToolsTales):
         japanese_text = entry_node.find("JapaneseText").text
         english_text = entry_node.find("EnglishText").text
 
-        # Use the values only for Status = Done and use English if non empty
+        # Use the values only for Status = Done and use English if non-empty
         final_text = ''
         if (status in self.list_status_insertion):
             final_text = english_text or ''
         else:
             final_text = japanese_text or ''
 
-        voiceId_node = entry_node.find("VoiceId")
-        if (voiceId_node != None):
-            final_text = '<voice:{}>'.format(voiceId_node.text) + final_text
+        voiceid_node = entry_node.find("VoiceId")
+
+        if voiceid_node is not None:
+            final_text = f'<{voiceid_node.text}>' + final_text
 
         # Convert the text values to bytes using TBL, TAGS, COLORS, ...
         bytes_entry = self.text_to_bytes(final_text)
 
         #Pad with 00
-        if (pad):
+        if pad:
             rest = 4 - len(bytes_entry) % 4 - 1
             bytes_entry += (b'\x00' * rest)
 
         return bytes_entry
 
     def extract_all_skits(self, extract_XML=False):
-        folder = 'fc'
-        base_path = self.paths['extracted_files'] / 'data' / folder
-
-        fps4 = Fps4(detail_path=self.paths['original_files'] / 'data' / folder / 'fcscr.dat',
-                    header_path=self.paths['original_files'] / 'data' / folder / 'fcscr.b')
+        type = 'skit'
+        base_path = self.paths['extracted_files'] / self.file_dict[type]
+        base_path.mkdir(parents=True, exist_ok=True)
+        fps4 = Fps4(detail_path=self.paths['original_files'] / 'data' / 'fc' / 'fcscr.dat',
+                    header_path=self.paths['original_files'] / 'data' / 'fc' / 'fcscr.b')
         fps4.extract_files(base_path, decompressed=True)
 
         self.paths['skit_xml'].mkdir(parents=True, exist_ok=True)
@@ -545,6 +547,72 @@ class ToolsTOH(ToolsTales):
             if len(tss_obj.struct_list) > 0:
                 tss_obj.extract_to_xml(self.paths['skit_xml'], tss_file.with_suffix('.xml').name)
 
+    def pack_tss(self, destination_path:Path, xml_path:Path):
+        tss = Tss(path=destination_path, bytes_to_text=self.bytes_to_text, text_to_bytes=self.text_to_bytes,
+                  list_status_insertion=self.list_status_insertion)
+        tss.pack_tss_file(destination_path=destination_path,
+                          xml_path=xml_path)
+
+    def pack_all_skits(self):
+        type = 'skit'
+        #Copy original TSS files in the "updated" folder
+        dest = self.paths['temp_files'] / self.file_dict[type]
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(self.paths['extracted_files'] / self.file_dict[type], dest, dirs_exist_ok=True)
+
+        fps4 = Fps4(detail_path=self.paths['original_files'] / 'data' / 'fc' / 'fcscr.dat',
+                    header_path=self.paths['original_files'] / 'data' / 'fc' / 'fcscr.b')
+
+        #Repack TSS files
+        for file in fps4.files:
+            self.pack_tss(destination_path=dest / file.name,
+                           xml_path=self.paths['skit_xml'] / file.name.replace('.FCBIN', '.xml'))
+
+
+        #Repack FPS4 archive
+        fps4.pack_file(updated_file_path=dest, destination_folder=self.paths['final_files'] / 'data' / 'fc')
+
+    def pack_mapbin_story(self, file_name, type):
+        mapbin_folder = self.paths['temp_files'] / self.file_dict[type] / file_name
+
+        # Look on each SCP file
+        for scp_path in mapbin_folder.iterdir():
+
+            if scp_path.suffix == ".SCP":
+                xml_path = self.paths['story_xml'] / scp_path.with_suffix('.xml').name
+
+                if os.path.exists(xml_path):
+                    self.pack_tss(destination_path=scp_path,
+                                  xml_path=xml_path)
+
+            args = ['lzss', '-evn', scp_path]
+            subprocess.run(args)
+
+
+        fps4_mapbin = Fps4(detail_path=self.paths['temp_files'] / self.file_dict[type] / f'{file_name}.MAPBIN',
+                           header_path=self.paths['temp_files'] / self.file_dict[type] / f'{file_name}.B')
+
+        fps4_mapbin.pack_fps4_type1(updated_file_path=mapbin_folder,
+                                    destination_folder=self.paths['temp_files'] / self.file_dict[type])
+    def pack_all_story(self):
+        type = 'story'
+        # Copy original TSS files in the "updated" folder
+        dest = self.paths['temp_files'] / self.file_dict[type]
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(self.paths['extracted_files'] / self.file_dict[type], dest, dirs_exist_ok=True)
+
+        #Repack each of the MAPBIN FPS4
+        folder = 'm'
+        base_path = self.paths['extracted_files'] / 'data' / folder
+        fps4_m = Fps4(detail_path=self.paths['original_files'] / 'data' / folder / f'{folder}.dat',
+                    header_path=self.paths['original_files'] / 'data' / folder / f'{folder}.b')
+
+        for file in [f for f in fps4_m.files if f.name.endswith('.B')]:
+
+            if file.name == "FSHT00.B":
+                self.pack_mapbin_story(file.name.split('.')[0], type)
+
+        fps4_m.pack_fps4_type1(self.paths['temp_files'] / self.file_dict[type], self.paths['final_files'] / self.file_dict[type])
     def extract_all_story(self, extract_XML=False):
         folder = 'm'
         base_path = self.paths['extracted_files'] / 'data' / folder
@@ -565,7 +633,8 @@ class ToolsTOH(ToolsTales):
 
             #Load the tss file
             for tss_file in folder_path.iterdir():
-                tss_obj = Tss(tss_file, self.bytes_to_text)
+                tss_obj = Tss(path=tss_file, bytes_to_text=self.bytes_to_text,
+                              text_to_bytes=self.text_to_bytes, list_status_insertion=self.list_status_insertion)
 
                 if len(tss_obj.struct_list) > 0:
                     tss_obj.extract_to_xml(self.paths['story_xml'], tss_file.with_suffix('.xml').name)
