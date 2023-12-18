@@ -543,7 +543,7 @@ class ToolsTOH(ToolsTales):
 
         self.paths['skit_xml'].mkdir(parents=True, exist_ok=True)
         for tss_file in base_path.iterdir():
-            tss_obj = Tss(tss_file, self.bytes_to_text)
+            tss_obj = Tss(tss_file, bytes_to_text=self.bytes_to_text, text_to_bytes=self.text_to_bytes, list_status_insertion=self.list_status_insertion)
             if len(tss_obj.struct_list) > 0:
                 tss_obj.extract_to_xml(self.paths['skit_xml'], tss_file.with_suffix('.xml').name)
 
@@ -638,57 +638,6 @@ class ToolsTOH(ToolsTales):
 
                 if len(tss_obj.struct_list) > 0:
                     tss_obj.extract_to_xml(self.paths['story_xml'], tss_file.with_suffix('.xml').name)
-    def extract_from_struct(self, f, strings_offset, pointer_offset, struct_offset, root):
-
-        # print("Offset: {}".format(hex(struct_offset)))
-        f.seek(struct_offset, 0)
-
-        # Extract all the information and create the entry
-        f.read(4)
-        unknown_pointer = struct.unpack('<I', f.read(4))[0]
-        speaker_offset = struct.unpack('<I', f.read(4))[0] + strings_offset
-        text_offset = struct.unpack('<I', f.read(4))[0] + strings_offset
-        print(f'speaker offsetspeaker: {speaker_offset}')
-        speaker_text = self.bytes_to_text(f, speaker_offset)
-
-        if speaker_text != None:
-            struct_speaker_id = self.add_speaker_entry(root.find("Speakers"), pointer_offset, speaker_text)
-        japText = self.bytes_to_text(f, text_offset)
-        print(f'Text Offset: {hex(text_offset)} - {japText}')
-        jap_split_bubble = japText.split("<Bubble>")
-        [self.create_entry(root.find("Strings"), pointer_offset, jap, "Struct", struct_speaker_id, unknown_pointer)
-         for jap in jap_split_bubble]
-        self.struct_id += 1
-
-        return speaker_offset
-
-    def add_speaker_entry(self, root, pointer_offset, japText):
-
-        speaker_entries = [entry for entry in root.iter("Entry") if
-                           entry != None and entry.find("JapaneseText").text == japText]
-        struct_speaker_id = 0
-
-        if len(speaker_entries) > 0:
-
-            # Speaker already exist
-            speaker_entries[0].find("PointerOffset").text = speaker_entries[0].find(
-                "PointerOffset").text + ",{}".format(pointer_offset)
-            struct_speaker_id = speaker_entries[0].find("Id").text
-
-        else:
-
-            # Need to create that new speaker
-            entry_node = etree.SubElement(root, "Entry")
-            etree.SubElement(entry_node, "PointerOffset").text = str(pointer_offset)
-            etree.SubElement(entry_node, "JapaneseText").text = str(japText)
-            etree.SubElement(entry_node, "EnglishText")
-            etree.SubElement(entry_node, "Notes")
-            etree.SubElement(entry_node, "Id").text = str(self.speaker_id)
-            etree.SubElement(entry_node, "Status").text = "To Do"
-            struct_speaker_id = self.speaker_id
-            self.speaker_id += 1
-
-        return struct_speaker_id
 
     def create_entry(self, strings_node, pointer_offset, text, entry_type, speaker_id, unknown_pointer):
 
@@ -725,146 +674,6 @@ class ToolsTOH(ToolsTales):
 
 
 
-    def pack_all_skits(self):
-        #Copy original files TSS
-        type = 'skit'
-        dest = self.paths['temp_files'] / self.file_dict[type] / 'tss'
-        dest.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(self.paths['extracted_files'] / self.file_dict[type], dest, dirs_exist_ok=True)
-
-        #Compress using LZ10
-        for file_path in (self.paths['temp_files'] / self.file_dict[type]).iterdir():
-            print(file_path)
-
-
-    def pack_tss_file(self, file_name:str, file_type:str):
-
-
-        # Grab the Tss file inside the folder
-        file_name = file_name.split('.')[0]
-        base_path = self.paths['extracted_files'] / self.file_dict[file_type]
-        with FileIO(base_path / f'{file_name}.FCBIN', 'rb') as original_tss:
-            data = original_tss.read()
-            tss = io.BytesIO(data)
-            tss.seek(0,0)
-            tss.read(12)
-            base_offset = struct.unpack('<I', tss.read(4))[0]
-            tree = etree.parse(self.paths[f'{file_type}_xml'])
-            root = tree.getroot()
-
-            # Move to the start of the text section
-            start_offset = self.get_starting_offset(root, tss, base_offset)
-            tss.seek(start_offset, 0)
-
-            # Insert all Speaker Nodes from Struct
-            speaker_dict = self.insert_speaker(root, tss, base_offset)
-
-            # Do stuff for Struct
-            struct_dict = dict()
-            struct_entries = root.findall('Strings[Section="Story"]/Entry')
-
-            struct_ids = list(set([int(entry.find("StructId").text) for entry in struct_entries]))
-            for struct_id in struct_ids:
-
-                entries = [entry for entry in struct_entries if int(entry.find("StructId").text) == struct_id]
-                text_offset = tss.tell()
-
-                bytes_text = b''
-                for struct_node in entries:
-
-                    voice_id = struct_node.find("VoiceId")
-                    if voice_id != None:
-                        voice_final = voice_id.text.replace('<', '(').replace('>', ')')
-                        tss.write(b'\x09')
-                        tss.write(self.text_to_bytes(voice_final))
-
-                        bytes_text = self.get_node_bytes(struct_node)
-                        tss.write(bytes_text)
-                        tss.write(b'\x0C')
-
-                tss.seek(tss.tell() - 1)
-                tss.write(b'\x00\x00\x00')
-
-                # Construct Struct
-                struct_dict[int(struct_node.find("PointerOffset").text)] = struct.pack("<I", tss.tell() - base_offset)
-                tss.write(struct.pack("<I", 1))
-                tss.write(struct.pack("<I", int(struct_node.find("UnknownPointer").text)))  # UnknownPointer
-                tss.write(speaker_dict[struct_node.find("SpeakerId").text])  # PersonPointer
-                tss.write(struct.pack("<I", text_offset - base_offset))  # TextPointer
-                tss.write(struct.pack("<I", text_offset + len(bytes_text) + 1 - base_offset))
-                tss.write(struct.pack("<I", text_offset + len(bytes_text) + 2 - base_offset))
-                tss.write(b'\x00')
-
-            # Do Other Strings
-            #string_dict = dict()
-            #for string_node in root.findall('Strings[Section="Other Strings"]/Entry'):
-            #    string_dict[int(string_node.find("PointerOffset").text)] = struct.pack("<I", tss.tell() - base_offset)
-            #    bytes_text = self.get_node_bytes(string_node)
-            #    tss.write(bytes_text)
-            #    tss.write(b'\x00')
-
-            # Update Struct pointers
-            for pointer_offset, value in struct_dict.items():
-                tss.seek(pointer_offset)
-                tss.write(value)
-
-            # Update String pointers
-            #for pointer_offset, value in string_dict.items():
-            #    tss.seek(pointer_offset)
-            #    tss.write(value)
-
-            #Update TSS
-            #with open(file_tss, "wb") as f:
-            #    f.write(tss.getvalue())
-
-
-            return tss.getvalue()
-
-    def get_starting_offset(self, root, tss, base_offset):
-
-        # String Pointers
-        strings_pointers = [int(ele.find("PointerOffset").text) for ele in
-                            root.findall('Strings[Section="Other Strings"]/Entry')]
-        strings_offset = []
-        structs_offset = []
-
-        for pointer_offset in strings_pointers:
-            tss.seek(pointer_offset)
-            strings_offset.append(struct.unpack("<I", tss.read(4))[0] + base_offset)
-
-        # Struct Pointers
-        struct_pointers = [int(ele.find("PointerOffset").text) for ele in
-                           root.findall('Strings[Section="Story"]/Entry')]
-        for pointer_offset in struct_pointers:
-            tss.seek(pointer_offset)
-            struct_offset = struct.unpack("<I", tss.read(4))[0] + base_offset
-            tss.seek(struct_offset)
-            tss.read(8)
-            struct_offset = struct.unpack("<I", tss.read(4))[0] + base_offset
-            structs_offset.append(struct_offset)
-
-        struct_count = len(structs_offset)
-        strings_count = len(strings_offset)
-
-        if struct_count == 0:
-            return min(strings_offset)
-        elif strings_count == 0:
-            return min(structs_offset)
-        else:
-            return min(min(structs_offset), min(strings_offset))
-
-    def insert_speaker(self, root, tss, base_offset):
-
-        speaker_dict = dict()
-
-        for speaker_node in root.findall("Speakers/Entry"):
-            bytes_entry = self.get_node_bytes(speaker_node)
-            speaker_id = speaker_node.find("Id").text
-            speaker_dict[speaker_id] = struct.pack("<I", tss.tell() - base_offset)
-            tss.write(bytes_entry)
-            tss.write(b'\x00')
-        return speaker_dict
-
     def text_to_bytes(self, text):
         multi_regex = (self.HEX_TAG + "|" + self.COMMON_TAG + r"|(\n)")
         tokens = [sh for sh in re.split(multi_regex, text) if sh]
@@ -885,8 +694,10 @@ class ToolsTOH(ToolsTales):
 
                 elif any(re.match(possible_value, tag)  for possible_value in self.VALID_VOICEID):
                     output += b'\x09\x28' + tag.encode("cp932") + b'\x29'
+
                 elif tag == "Bubble":
                     output += b'\x0C'
+
                 else:
                     if tag in self.ijsonTblTags["TAGS"]:
                         output += struct.pack("B", self.ijsonTblTags["TAGS"][tag])
@@ -908,7 +719,13 @@ class ToolsTOH(ToolsTales):
                     if c in self.PRINTABLE_CHARS or c == "\u3000":
                         output += c.encode("cp932")
                     else:
-                        output += struct.pack(">H",
-                            self.ijsonTblTags["TBL"].get(c, int.from_bytes(c.encode("cp932"), "big")))
+
+                        if c in self.ijsonTblTags["TBL"].keys():
+                            b = self.ijsonTblTags["TBL"][c].to_bytes(2, 'big')
+                            output += b
+                        else:
+                            output += c.encode("cp932")
+
+
 
         return output
