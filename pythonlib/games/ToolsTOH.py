@@ -266,6 +266,18 @@ class ToolsTOH(ToolsTales):
         # Write to XML file
         return etree.tostring(xml_root, encoding="UTF-8", pretty_print=True)
 
+    def unpack_menu_files(self):
+        base_path = self.paths['extracted_files'] / 'data/menu'/ 'monsterbook'
+        fps4 = Fps4(detail_path=self.paths['original_files'] / 'data/menu' / 'monsterbook' / 'EnemyIcon.dat',
+                    header_path=self.paths['original_files'] / 'data/menu' / 'monsterbook' / 'EnemyIcon.b')
+        fps4.extract_files(base_path, decompressed=False)
+
+        for file in fps4.files:
+            file_path = self.paths['extracted_files'] / 'data/menu/monsterbook/' / file.name
+            enemy_fps4 = Fps4(header_path=file_path)
+            print(file_path.with_suffix(''))
+            enemy_fps4.extract_files(file_path.with_suffix(''), decompressed=True)
+
     def bytes_to_text(self, src: FileIO, offset: int = -1) -> str:
         finalText = ""
         tags = self.jsonTblTags['TAGS']
