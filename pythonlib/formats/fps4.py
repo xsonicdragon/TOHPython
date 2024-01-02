@@ -1,3 +1,4 @@
+import shutil
 from dataclasses import dataclass
 import struct
 from typing import Optional
@@ -14,6 +15,8 @@ class fps4_file():
     data:bytes
     name:str
     size:int
+    rank:int
+    offset:int
 
 dict_buffer = {
     0x2C:16,
@@ -22,18 +25,20 @@ dict_buffer = {
 
 class Fps4():
 
-    def __init__(self, header_path:Path , detail_path:Path = None) -> None:
+    def __init__(self, header_path:Path , detail_path:Path = None, size_adjusted = 0) -> None:
         self.type = -1
         self.align = False
         self.files = []
         self.header_path = header_path
         self.file_size = os.path.getsize(header_path)
         self.detail_path = detail_path or header_path
+        self.size_adjusted = size_adjusted
 
         self.extract_information()
 
     def extract_information(self):
         with FileIO(self.header_path) as f_header:
+            self.header_data = f_header.read()
             f_header.seek(4,0)
             self.file_amount = f_header.read_uint32()-1
             self.header_size = f_header.read_uint32()
@@ -79,7 +84,7 @@ class Fps4():
             elif data[0] == 0x11:
                 c_type = 'LZ11'
 
-            self.files.append(fps4_file(c_type, data, f'{i}.bin', size))
+            self.files.append(fps4_file(c_type, data, f'{i}.bin', size, i, files_offset[i]))
 
 
     #Type 1 = Header + Detail
@@ -98,6 +103,7 @@ class Fps4():
                 name = f_header.read(32).decode("ASCII").strip('\x00')
                 files_infos.append((offset, size, name))
 
+            i=0
             for offset, size, name in files_infos:
                 #print(f'name: {name} - size: {size}')
 
@@ -110,20 +116,23 @@ class Fps4():
                 elif data[0] == 0x11:
                     c_type = 'LZ11'
 
-                self.files.append(fps4_file(c_type, data, name, size))
+                self.files.append(fps4_file(c_type, data, name, size, i, offset))
+                i+=1
 
-    def extract_files(self, destination_path, decompressed=False):
+    def extract_files(self, destination_path:Path, copy_path:Path, decompressed=False):
 
         destination_path.mkdir(parents=True, exist_ok=True)
         for file in self.files:
             with open(destination_path / file.name, 'wb') as f:
                 f.write(file.data)
+            copy_path.mkdir(parents=True, exist_ok=True)
+            shutil.copy(destination_path / file.name, copy_path / file.name)
 
             #Decompress using LZ10 or LZ11
             if decompressed:
                 if file.c_type == 'LZ10':
                     args = ['lzss', '-d', file.name]
-                    subprocess.run(args, cwd=destination_path)
+                    subprocess.run(args, cwd=destination_path, stdout = subprocess.DEVNULL)
 
             with open(destination_path / file.name, 'rb') as f:
                 head = f.read(4)
@@ -139,11 +148,12 @@ class Fps4():
             args = ['lzss', '-evn', file_name]
         elif c_type == "LZ11":
             args = ['lzx', '-evb', file_name]
-        subprocess.run(args, cwd=updated_file_path)
+        subprocess.run(args, cwd=updated_file_path, stdout = subprocess.DEVNULL)
     def pack_fps4_type1(self, updated_file_path:Path, destination_folder:Path):
         buffer = 0
 
         #Update detail file
+        self.files.sort(key= lambda file: file.offset)
         with FileIO(destination_folder / self.detail_path.name, "wb") as fps4_detail:
 
             #Writing new dat file and updating file attributes
@@ -152,25 +162,32 @@ class Fps4():
 
                 with FileIO(updated_file_path / file.name, 'rb') as sub_file:
                     file.data = sub_file.read()
+                    file.offset = buffer
                     file.size = len(file.data)
+                    buffer += file.size
                     fps4_detail.write(file.data)
 
         #Update header file
-        with FileIO(destination_folder / self.header_path.name, "r+b") as fps4_header:
+        with FileIO(self.header_data, "r+b") as fps4_header:
 
             fps4_header.seek(self.header_size,0)
+            self.files.sort(key= lambda file: file.rank)
             for file in self.files:
-                fps4_header.write(struct.pack('<L', buffer))
+                fps4_header.write(struct.pack('<L', file.offset))
                 fps4_header.write(struct.pack('<L', file.size))
 
                 if self.read_more:
-                    fps4_header.write(struct.pack('<L', file.size))
+                    fps4_header.seek(fps4_header.tell()+4,0)
+                    #fps4_header.write(struct.pack('<L', file.size))
 
                 fps4_header.write(file.name.encode())
                 fps4_header.write(b'\x00' * (32 - (len(file.name) % 32)))
-                buffer += file.size
 
             fps4_header.write(struct.pack('<L', buffer) + b'\x00' * 12)
+
+            with FileIO(destination_folder / self.header_path.name, "wb") as f_header:
+                fps4_header.seek(0,0)
+                f_header.write(fps4_header.read())
 
 
     def get_file_extension(self, file_path:Path):
