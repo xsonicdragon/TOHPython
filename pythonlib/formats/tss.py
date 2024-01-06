@@ -51,6 +51,7 @@ class Tss():
             self.create_struct_nodes(tss_f)
     def extract_all_pointers(self, f):
 
+        self.id = 1
         for section, bytecode_list in bytecode_dict.items():
             for bytecode in bytecode_list:
                 regex = re.compile(bytecode)
@@ -64,7 +65,7 @@ class Tss():
 
                     f.seek(pointer_offset, 0)
                     text_offset = struct.unpack('<H', f.read(2))[0] + self.strings_offset
-                    struct_node = StructNode(id=self.struct_id, pointer_offset=pointer_offset,
+                    struct_node = StructNode(id=self.id, pointer_offset=pointer_offset,
                                               text_offset=text_offset,
                                               tss=f, strings_offset=self.strings_offset, file_size=self.file_size,
                                            section=section)
@@ -72,8 +73,6 @@ class Tss():
                     self.struct_dict[pointer_offset] = struct_node
                     self.id += 1
 
-                    if section in ['Story', 'NPC']:
-                        self.struct_id += 1
 
 
     def create_struct_nodes(self, f_tss:FileIO):
@@ -173,16 +172,13 @@ class Tss():
 
         etree.SubElement(entry_node, "EnglishText")
         etree.SubElement(entry_node, "Notes")
-        #etree.SubElement(entry_node, "Id").text = str(struct_node.id)
+        etree.SubElement(entry_node, "Id").text = str(struct_node.id)
         status_text = "To Do"
 
         if struct_node.section in ["Story", "NPC"]:
-            etree.SubElement(entry_node, "StructId").text = str(struct_node.id)
             etree.SubElement(entry_node, "BubbleId").text = str(bubble.id)
             if int(struct_node.speaker.id) > 0:
                 etree.SubElement(entry_node, "SpeakerId").text = str(struct_node.speaker.id)
-
-        if subid is not None:
             etree.SubElement(entry_node, "SubId").text = str(subid)
 
         etree.SubElement(entry_node, "Status").text = status_text

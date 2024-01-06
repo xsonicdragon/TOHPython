@@ -55,7 +55,7 @@ class StructNode:
 
                     if self.section == "Misc":
                         self.nb_unknowns = 10
-                        print(hex(tss.tell()))
+
                     else:
                         self.nb_unknowns = 6
 
@@ -83,11 +83,8 @@ class StructNode:
 
 
     def extract_speaker_information(self, tss:FileIO, pointer_offset:int):
-        print(f'Speaker Pointer offset: {hex(tss.tell())}')
-        print(f'Strings o: {hex(self.strings_offset)}')
         offset = tss.read_uint32() + self.strings_offset
         self.speaker = Speaker(pointer_offset, offset)
-        print(f'Speaker Offset: {hex(offset)}')
         tss.seek(offset)
         self.speaker.jap_text, self.speaker.bytes = bytes_to_text(tss, offset)
 
@@ -107,7 +104,6 @@ class StructNode:
 
         normal_text = False
         sub_id = 1
-        print(f'Offset: {hex(tss.tell())}')
         if offset <= self.file_size-4:
 
 
@@ -147,7 +143,7 @@ class StructNode:
             self.texts_entry.append(entry)
 
     def parse_xml_nodes(self, xml_nodes_list, list_status_insertion):
-        self.id = int(xml_nodes_list[0].find("StructId").text)
+        self.id = int(xml_nodes_list[0].find("Id").text)
 
         max_sub_id = max([int(entry.find("SubId").text) for entry in xml_nodes_list])
 
@@ -155,14 +151,10 @@ class StructNode:
 
             sub_nodes = [sub for sub in xml_nodes_list if int(sub.find('SubId').text) == sub_id]
             max_bubble_id = max([int(entry.find('BubbleId').text) for entry in sub_nodes])
-            print(f'Max: {max_bubble_id + 1}')
             for bubble_id in range(1, max_bubble_id + 1):
                 bubble = [bubble for bubble in sub_nodes if int(bubble.find('BubbleId').text) == bubble_id][0]
                 entry_bytes, japanese_text, final_text, status = self.get_node_bytes(bubble, list_status_insertion, pad=False)
 
-                if japanese_text == '称号について':
-                    t  =2
-                print(f'Bubble: {bubble_id}  - {japanese_text}')
                 self.texts_entry[sub_id-1].bubble_list[bubble_id-1].jap_text = japanese_text
                 self.texts_entry[sub_id-1].bubble_list[bubble_id-1].eng_text = final_text
                 self.texts_entry[sub_id-1].bubble_list[bubble_id-1].status = status

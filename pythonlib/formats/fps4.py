@@ -123,16 +123,17 @@ class Fps4():
 
         destination_path.mkdir(parents=True, exist_ok=True)
         for file in self.files:
-            with open(destination_path / file.name, 'wb') as f:
-                f.write(file.data)
+
             copy_path.mkdir(parents=True, exist_ok=True)
+            with open(destination_path / file.name, "wb") as f:
+                f.write(file.data)
+
             shutil.copy(destination_path / file.name, copy_path / file.name)
 
             #Decompress using LZ10 or LZ11
             if decompressed:
-                if file.c_type == 'LZ10':
-                    args = ['lzss', '-d', file.name]
-                    subprocess.run(args, cwd=destination_path, stdout = subprocess.DEVNULL)
+                args = ['lzss', '-d', file.name]
+                subprocess.run(args, cwd=destination_path, stdout = subprocess.DEVNULL)
 
             with open(destination_path / file.name, 'rb') as f:
                 head = f.read(4)

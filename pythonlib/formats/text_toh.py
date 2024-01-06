@@ -115,7 +115,6 @@ def bytes_to_text(src: FileIO, offset: int = -1) -> str:
 def text_to_bytes(text:str):
     multi_regex = (HEX_TAG + "|" + COMMON_TAG + r"|(\n)")
     tokens = [sh for sh in re.split(multi_regex, text) if sh]
-    print(VALID_VOICEID)
     output = b''
     for t in tokens:
         # Hex literals
