@@ -96,10 +96,28 @@ def get_arguments(argv=None):
     )
 
     sp_insert.add_argument(
+        "-des",
+        "--des",
+        required=False,
+        default="",
+        metavar="des",
+        help="(Optional) - Specify Desmume location to use together with the saved file",
+    )
+
+    sp_insert.add_argument(
+        "-save",
+        "--save",
+        required=False,
+        default="",
+        metavar="save",
+        help="(Optional) - Specify the saved file to put in desmume folder",
+    )
+
+    sp_insert.add_argument(
         "--with-proofreading",
         required=False,
         action="store_const",
-        const="Proofreading",
+        const="Proofread",
         default="",
         help="(Optional) - Insert lines in 'Proofreading' status",
     )
@@ -108,7 +126,7 @@ def get_arguments(argv=None):
         "--with-editing",
         required=False,
         action="store_const",
-        const="Editing",
+        const="Edited",
         default="",
         help="(Optional) - Insert lines in 'Editing' status",
     )
@@ -183,7 +201,6 @@ if __name__ == "__main__":
             if args.file_type == "Menu":
                 #tales_instance.decompress_arm9()
                 tales_instance.pack_all_menu()
-                #tales_instance.compress_arm9()
                 tales_instance.make_iso(Path(args.iso))
 
             if args.file_type == "Iso":
@@ -193,8 +210,15 @@ if __name__ == "__main__":
             elif args.file_type == "Skits":
                 tales_instance.pack_all_skits()
 
-            elif args.file_type == "Skits":
+            elif args.file_type == "Story":
                 tales_instance.pack_all_story()
+
+            elif args.file_type == "All":
+                tales_instance.pack_all_skits()
+                tales_instance.pack_all_story()
+                tales_instance.pack_all_menu()
+                tales_instance.save_iso(Path(args.iso))
+                tales_instance.update_save_file(Path(args.des), args.save)
 
         elif args.file_type == "Main":
             tales_instance.pack_main_archive()
@@ -218,16 +242,19 @@ if __name__ == "__main__":
             tales_instance.patch_binaries()
             tales_instance.make_iso()
 
+
     if args.action == "extract":
 
         if game_name == "TOH":
 
             if args.file_type == "Menu":
-                tales_instance.extract_all_menu()
+                #tales_instance.unpack_menu_files()
+                tales_instance.extract_all_menu(keep_translations=True)
 
             if args.file_type == "Iso":
                 tales_instance.extract_Iso(Path(args.iso))
                 tales_instance.decompress_arm9()
+                tales_instance.decompress_overlays()
 
             if args.file_type == "Skits":
                 tales_instance.extract_all_skits(args.replace)
