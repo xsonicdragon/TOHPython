@@ -96,6 +96,24 @@ def get_arguments(argv=None):
     )
 
     sp_insert.add_argument(
+        "-des",
+        "--des",
+        required=False,
+        default="",
+        metavar="des",
+        help="(Optional) - Specify Desmume location to use together with the saved file",
+    )
+
+    sp_insert.add_argument(
+        "-save",
+        "--save",
+        required=False,
+        default="",
+        metavar="save",
+        help="(Optional) - Specify the saved file to put in desmume folder",
+    )
+
+    sp_insert.add_argument(
         "--with-proofreading",
         required=False,
         action="store_const",
@@ -200,7 +218,7 @@ if __name__ == "__main__":
                 tales_instance.pack_all_story()
                 tales_instance.pack_all_menu()
                 tales_instance.save_iso(Path(args.iso))
-                tales_instance.update_save_file()
+                tales_instance.update_save_file(Path(args.des), args.save)
 
         elif args.file_type == "Main":
             tales_instance.pack_main_archive()
@@ -231,7 +249,7 @@ if __name__ == "__main__":
 
             if args.file_type == "Menu":
                 #tales_instance.unpack_menu_files()
-                tales_instance.extract_all_menu()
+                tales_instance.extract_all_menu(keep_translations=True)
 
             if args.file_type == "Iso":
                 tales_instance.extract_Iso(Path(args.iso))

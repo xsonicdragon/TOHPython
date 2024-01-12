@@ -13,6 +13,7 @@ import lxml.etree as etree
 from pythonlib.formats.FileIO import FileIO
 from pythonlib.formats.fps4 import Fps4
 from pythonlib.formats.tss import Tss
+from pythonlib.utils.dsv2sav import sav_to_dsv
 import re
 from itertools import chain
 import io
@@ -136,7 +137,6 @@ class ToolsTOH(ToolsTales):
             load = f.read_uint32()
             f.seek(0x70)
             auto = f.read_uint32() - load
-            print(f'Load: {load} - Auto: {auto}')
 
         compressed_arm9_path = self.paths['final_files'] / 'arm9.bin'
         decompressed_arm9_path = self.paths['temp_files'] / 'arm9/arm9.bin'
@@ -145,24 +145,20 @@ class ToolsTOH(ToolsTales):
         with FileIO(compressed_arm9_path, 'r+b') as f:
             f.seek(auto - 4)
             offset = f.read_uint32() - load
-            print(f'Offset: {offset}')
 
             #1st value to update
             f.seek(offset)
             val1 = load + arm9_decomp_size - 0x18
-            print(f'val1: {hex(val1)}')
             f.write_uint32(val1)
 
             #2nd value to update
             f.seek(offset + 1*4)
             val2 = load + arm9_decomp_size
-            print(f'val2: {hex(val2)}')
             f.write_uint32(val2)
 
             #3rd value to update
             f.seek(offset + 5*4)
             val3 = load + arm9_comp_size
-            print(f'val3: {hex(val3)}')
             f.write_uint32(val3)
 
             f.seek(0)
@@ -190,7 +186,7 @@ class ToolsTOH(ToolsTales):
         self.clean_builds(self.paths["game_builds"])
         n: datetime.datetime = datetime.datetime.now()
         new_iso = f"TalesofHearts_{n.year:02d}{n.month:02d}{n.day:02d}{n.hour:02d}{n.minute:02d}.nds"
-        print(f'Making Iso {new_iso}...')
+        print(f'Replacing files in new build: {new_iso}...')
         self.new_iso = new_iso
 
         romnds = rom.NintendoDSRom.fromFile(game_iso)
@@ -212,7 +208,6 @@ class ToolsTOH(ToolsTales):
                     rem = file.parts[(i+1):]
                     path_file = '/'.join(rem)
                     path_file = path_file.replace('data/', '')
-                    print(path_file)
                     romnds.setFileByName(path_file, data)
 
         self.update_overlays(romnds)
@@ -238,7 +233,7 @@ class ToolsTOH(ToolsTales):
         #Copy the original file in a ARM9 folder
 
         #Compress the file using blz
-        print('Compressing Arm9...')
+        print('Compressing Arm9 and Overlays...')
         args = ['blz', '-en9', 'arm9.bin']
         subprocess.run(args, cwd=self.paths['final_files'], stdout = subprocess.DEVNULL)
 
@@ -267,12 +262,11 @@ class ToolsTOH(ToolsTales):
 
         # Decompress the file using blz
         print('Decompressing Overlays...')
-        args = ['blz', '-d', 'overlay']
+        args = ['blz', '-d', 'overlay*']
         subprocess.run(args, cwd=new_overlay, stdout = subprocess.DEVNULL)
 
     def compress_overlays(self):
 
-        print('Compressing Overlays...')
         overlay_folder = self.paths['final_files'] / 'overlay'
         overlay_folder.mkdir(parents=True, exist_ok=True)
         shutil.copy(self.paths['temp_files'] / 'overlay' / 'overlay_0003.bin', overlay_folder / 'overlay_0003.bin')
@@ -297,13 +291,15 @@ class ToolsTOH(ToolsTales):
                 print(f"Deleting {str(file.name)}...")
                 file.unlink()
 
-    def update_save_file(self):
+    def update_save_file(self, desmume_path:Path, saved_file_name:str):
 
-        find_saved = [file for file in self.desmume_path.iterdir() if os.path.getsize(file) == self.save_size]
+        if saved_file_name != '':
+            destination = desmume_path / 'Battery' / saved_file_name
+            shutil.copy(self.paths['saved_files'] / saved_file_name, destination)
+            new_saved_name = f"{self.new_iso.split('.')[0]}.dsv"
+            os.rename(destination, destination.parent / new_saved_name)
 
-        if find_saved is not None:
-            good_save_path = find_saved[0]
-            good_save_path.rename(good_save_path.parent / f"{self.new_iso.split('.')[0]}.dsv")
+
 
     def get_style_pointers(self, file: FileIO, ptr_range: tuple[int, int], base_offset: int, style: str) -> tuple[
         list[int], list[int]]:
@@ -338,9 +334,7 @@ class ToolsTOH(ToolsTales):
         for text, pointer_offset, emb in list_informations:
             self.create_entry(strings_node, pointer_offset, text, entry_type, -1, "")
             #self.create_entry(strings_node, pointers_offset, text, emb, max_len)
-    def extract_all_menu(self) -> None:
-        print("Extracting Menu Files...")
-
+    def extract_all_menu(self, keep_translations=False) -> None:
         #xml_path = self.paths["menu_xml"]
         xml_path = self.paths["menu_original"]
         xml_path.mkdir(exist_ok=True)
@@ -357,13 +351,13 @@ class ToolsTOH(ToolsTales):
                 file_path = self.paths["original_files"] / entry["file_path"]
 
             with FileIO(file_path, "rb") as f:
-                xml_data = self.extract_menu_file(entry, f)
+                xml_data = self.extract_menu_file(entry, f, keep_translations)
 
             with open(xml_path / (entry["friendly_name"] + ".xml"), "wb") as xmlFile:
                 xmlFile.write(xml_data)
 
             self.id = 1
-    def extract_menu_file(self, file_def, f: FileIO) -> bytes:
+    def extract_menu_file(self, file_def, f: FileIO, keep_translations=False) -> bytes:
 
         base_offset = file_def["base_offset"]
         xml_root = etree.Element("MenuText")
@@ -391,8 +385,6 @@ class ToolsTOH(ToolsTales):
             # other kind in the case they point to the same text
             temp = dict()
             for off, val in zip(pointers_offset, pointers_value):
-
-                print(f'Pointer offset: {hex(off)}')
                 text = self.bytes_to_text(f, val)
                 temp.setdefault(text, dict()).setdefault("ptr", []).append(off)
 
@@ -403,16 +395,53 @@ class ToolsTOH(ToolsTales):
             if 'style' in section.keys() and section['style'][0] == "T": max_len = int(section['style'][1:])
             self.create_Node_XML(xml_root, list_informations, section['section'], "String", max_len)
 
-        # Remove duplicates
-        # list_informations = self.remove_duplicates(section_list, pointers_offset_list, texts)
-        list_informations = [(k, str(v['ptr'])[1:-1], v.setdefault('emb', None)) for k, v in temp.items()]
-
-        # Build the XML Structure with the information
-        #if len(list_informations) != 0:
-        #    self.create_Node_XML(xml_root, list_informations, "MIPS PTR TEXT")
+        if keep_translations:
+            self.copy_translations_menu(root_original=xml_root, translated_path=self.paths['menu_xml'] / f"{file_def['friendly_name']}.xml")
 
         # Write to XML file
         return etree.tostring(xml_root, encoding="UTF-8", pretty_print=True)
+
+    def parse_entry(self, xml_node):
+
+        jap_text = xml_node.find('JapaneseText').text
+        eng_text = xml_node.find('EnglishText').text
+        status = xml_node.find('Status').text
+
+        final_text = eng_text or jap_text or ''
+        return jap_text, eng_text, final_text, status
+
+    def copy_translations_menu(self, root_original, translated_path: Path):
+
+        if translated_path.exists():
+
+            original_entries = {entry_node.find('JapaneseText').text: (section.find('Section').text,) +
+                                                                       self.parse_entry(entry_node) for section in
+                                root_original.findall('Strings') for entry_node in section.findall('Entry')}
+
+            tree = etree.parse(translated_path)
+            root_translated = tree.getroot()
+            translated_entries = {entry_node.find('JapaneseText').text: (section.find('Section').text,) +
+                                                   self.parse_entry(entry_node) for section in
+             root_translated.findall('Strings') for entry_node in section.findall('Entry')}
+
+
+            for entry_node in root_original.iter('Entry'):
+
+                jap_text = entry_node.find('JapaneseText').text
+
+                if jap_text in translated_entries:
+
+                    translated = translated_entries[jap_text]
+                    if translated_entries[jap_text][4] in ['Proofread', 'Edited', 'Done']:
+
+                        if translated_entries[jap_text][2] is not None:
+                            entry_node.find('EnglishText').text = translated_entries[jap_text][2]
+                        entry_node.find('Status').text = translated_entries[jap_text][4]
+                else:
+                    t = 2
+                    #print(f'String: {jap_text} was not found in translated XML')
+
+            #[print(f'{entry} was not found in original') for entry, value in translated_entries.items() if entry not in original_entries and entry is not None]
 
     def unpack_menu_files(self):
         base_path = self.paths['extracted_files'] / 'data/menu'/ 'monsterbook'
@@ -540,7 +569,6 @@ class ToolsTOH(ToolsTales):
 
 
             if entry["friendly_name"] in ['Arm9', 'Consumables', 'Sorma Skill', 'Outline', 'Overlay 3']:
-                print(entry["friendly_name"])
                 # Copy original files
 
                 orig = self.paths["extracted_files"] / entry["file_path"]
@@ -686,6 +714,7 @@ class ToolsTOH(ToolsTales):
         fps4.extract_files(destination_path=base_path, copy_path=self.paths['temp_files'] / self.file_dict['skit'], decompressed=True)
 
         self.paths['skit_xml'].mkdir(parents=True, exist_ok=True)
+        self.paths['skit_original'].mkdir(parents=True, exist_ok=True)
         for tss_file in tqdm(base_path.iterdir(), desc='Extracting Skits Files...'):
             tss_obj = Tss(tss_file, bytes_to_text=self.bytes_to_text, text_to_bytes=self.text_to_bytes, list_status_insertion=self.list_status_insertion)
             if len(tss_obj.struct_dict) > 0:
@@ -813,6 +842,7 @@ class ToolsTOH(ToolsTales):
         fps4.extract_files(destination_path=base_path, copy_path=copy_path)
 
         self.paths['story_xml'].mkdir(parents=True, exist_ok=True)
+        self.paths['story_original'].mkdir(parents=True, exist_ok=True)
         scp_files = [file for file in base_path.iterdir() if file.suffix == '.MAPBIN']
         for file in tqdm(scp_files, total=len(scp_files), desc=f"Extracting Story Files"):
 
@@ -828,11 +858,13 @@ class ToolsTOH(ToolsTales):
                 self.extract_tss(tss_file, 'story')
 
 
+
+
     def create_entry(self, strings_node, pointer_offset, text, entry_type, speaker_id, unknown_pointer):
 
         # Add it to the XML node
         entry_node = etree.SubElement(strings_node, "Entry")
-        etree.SubElement(entry_node, "PointerOffset").text = str(pointer_offset)
+        etree.SubElement(entry_node, "PointerOffset").text = str(pointer_offset).replace(' ', '')
         text_split = re.split(self.COMMON_TAG, text)
 
         if len(text_split) > 1 and any(possible_value in text for possible_value in self.VALID_VOICEID):
