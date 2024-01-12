@@ -11,7 +11,7 @@ PRINTABLE_CHARS = "".join(
             (string.digits, string.ascii_letters, string.punctuation, " ")
         )
 jsonTblTags = dict()
-with open('../TOH/Project/tbl_all.json') as f:
+with open('../Tales-of-Hearts-DS/Project/tbl_all.json') as f:
     jsonraw = json.loads(f.read(), encoding="utf-8")
     for k, v in jsonraw.items():
         jsonTblTags[k] = {int(k2, 16): v2 for k2, v2 in v.items()}
