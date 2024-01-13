@@ -146,6 +146,7 @@ class Tss():
 
         for speaker_id, speaker_node in self.speaker_dict.items():
             entry_node = etree.SubElement(speakers, "Entry")
+            etree.SubElement(entry_node, "PointerOffset")
             etree.SubElement(entry_node, "JapaneseText").text = speaker_node.jap_text
             etree.SubElement(entry_node, "EnglishText")
             etree.SubElement(entry_node, "Notes")
@@ -172,16 +173,16 @@ class Tss():
 
         etree.SubElement(entry_node, "EnglishText")
         etree.SubElement(entry_node, "Notes")
+
+        if int(struct_node.speaker.id) > 0:
+            etree.SubElement(entry_node, "SpeakerId").text = str(struct_node.speaker.id)
         etree.SubElement(entry_node, "Id").text = str(struct_node.id)
-        status_text = "To Do"
 
         if struct_node.section in ["Story", "NPC"]:
             etree.SubElement(entry_node, "BubbleId").text = str(bubble.id)
-            if int(struct_node.speaker.id) > 0:
-                etree.SubElement(entry_node, "SpeakerId").text = str(struct_node.speaker.id)
             etree.SubElement(entry_node, "SubId").text = str(subid)
 
-        etree.SubElement(entry_node, "Status").text = status_text
+        etree.SubElement(entry_node, "Status").text = "To Do"
         self.id += 1
 
     def find_xml_nodes(self, pointer_offset:int):

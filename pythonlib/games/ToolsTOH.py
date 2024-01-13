@@ -873,19 +873,15 @@ class ToolsTOH(ToolsTales):
         else:
             etree.SubElement(entry_node, "JapaneseText").text = text
 
-        eng_text = ''
-
         etree.SubElement(entry_node, "EnglishText")
         etree.SubElement(entry_node, "Notes")
-        etree.SubElement(entry_node, "Id").text = str(self.id)
-        statusText = "To Do"
 
         if entry_type == "Struct":
             etree.SubElement(entry_node, "StructId").text = str(self.struct_id)
             etree.SubElement(entry_node, "SpeakerId").text = str(speaker_id)
-            etree.SubElement(entry_node, "UnknownPointer").text = str(unknown_pointer)
 
-        etree.SubElement(entry_node, "Status").text = statusText
+        etree.SubElement(entry_node, "Id").text = str(self.id)
+        etree.SubElement(entry_node, "Status").text = "To Do"
         self.id += 1
     def extract_from_string(self, f, strings_offset, pointer_offset, text_offset, root):
 

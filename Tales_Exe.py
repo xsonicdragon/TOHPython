@@ -117,7 +117,7 @@ def get_arguments(argv=None):
         "--with-proofreading",
         required=False,
         action="store_const",
-        const="Proofread",
+        const="Proofreading",
         default="",
         help="(Optional) - Insert lines in 'Proofreading' status",
     )
@@ -126,7 +126,7 @@ def get_arguments(argv=None):
         "--with-editing",
         required=False,
         action="store_const",
-        const="Edited",
+        const="Editing",
         default="",
         help="(Optional) - Insert lines in 'Editing' status",
     )
