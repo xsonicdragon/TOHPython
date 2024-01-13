@@ -175,7 +175,7 @@ class ToolsTOH(ToolsTales):
             data_compressed = f.read()
 
         ov3.compressedSize = len(data_compressed)
-        ov3.ramSize = len(data_compressed)
+        #ov3.ramSize = len(data_compressed)
         romnds.arm9OverlayTable = saveOverlayTable(table)
         romnds.files[ov3.fileID] = data_compressed
 
@@ -432,7 +432,7 @@ class ToolsTOH(ToolsTales):
                 if jap_text in translated_entries:
 
                     translated = translated_entries[jap_text]
-                    if translated_entries[jap_text][4] in ['Proofread', 'Edited', 'Done']:
+                    if translated_entries[jap_text][4] in ['Proofreading', 'Editing', 'Done']:
 
                         if translated_entries[jap_text][2] is not None:
                             entry_node.find('EnglishText').text = translated_entries[jap_text][2]
