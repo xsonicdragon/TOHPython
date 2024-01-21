@@ -223,8 +223,8 @@ class ToolsTOH(ToolsTales):
 
         #Decompress the file using blz
         print('Decompressing Arm9...')
-        args = ['blz', '-d', 'arm9.bin']
-        subprocess.run(args, cwd=new_arm9.parent, stdout = subprocess.DEVNULL)
+        args = ['blz', '-d', new_arm9]
+        subprocess.run(args, cwd=Path.cwd() / 'pythonlib/utils', stdout = subprocess.DEVNULL)
 
     def compress_arm9(self):
 
@@ -234,8 +234,8 @@ class ToolsTOH(ToolsTales):
 
         #Compress the file using blz
         print('Compressing Arm9 and Overlays...')
-        args = ['blz', '-en9', 'arm9.bin']
-        subprocess.run(args, cwd=self.paths['final_files'], stdout = subprocess.DEVNULL)
+        args = ['blz', '-en9', self.paths['final_files'] / 'arm9.bin']
+        subprocess.run(args, cwd=Path.cwd() / 'pythonlib/utils', stdout = subprocess.DEVNULL)
 
         # Update crappy arm9.bin to tinke's version
         #with open(self.paths['final_files'] / 'arm9.bin', "rb+") as f:
@@ -262,16 +262,16 @@ class ToolsTOH(ToolsTales):
 
         # Decompress the file using blz
         print('Decompressing Overlays...')
-        args = ['blz', '-d', 'overlay*']
-        subprocess.run(args, cwd=new_overlay, stdout = subprocess.DEVNULL)
+        args = ['blz', '-d', new_overlay / 'overlay*']
+        subprocess.run(args, cwd=Path.cwd() / 'pythonlib/utils', stdout = subprocess.DEVNULL)
 
     def compress_overlays(self):
 
         overlay_folder = self.paths['final_files'] / 'overlay'
         overlay_folder.mkdir(parents=True, exist_ok=True)
         shutil.copy(self.paths['temp_files'] / 'overlay' / 'overlay_0003.bin', overlay_folder / 'overlay_0003.bin')
-        args = ['blz', '-en', 'overlay_0003.bin']
-        subprocess.run(args, cwd=overlay_folder, stdout=subprocess.DEVNULL)
+        args = ['blz', '-en', overlay_folder / 'overlay_0003.bin']
+        subprocess.run(args, cwd=Path.cwd() / 'pythonlib/utils', stdout=subprocess.DEVNULL)
 
     def adjusted_y9(self, overlay_name):
 
