@@ -296,10 +296,33 @@ class ToolsTOH(ToolsTales):
         if saved_file_name != '':
             destination = desmume_path / 'Battery' / saved_file_name
             shutil.copy(self.paths['saved_files'] / saved_file_name, destination)
-            new_saved_name = f"{self.new_iso.split('.')[0]}.dsv"
-            os.rename(destination, destination.parent / new_saved_name)
 
+            if saved_file_name.endswith('.sav'):
+                self.convert_sav_to_dsv(desmume_path, saved_file_name)
 
+            else:
+                new_saved_name = f"{self.new_iso.split('.')[0]}.dsv"
+                os.rename(destination, destination.parent / new_saved_name)
+
+    def convert_sav_to_dsv(self, desmume_path:Path, saved_file_name:str):
+        trimSize = 122
+        footer = [124, 60, 45, 45, 83, 110, 105, 112, 32, 97, 98, 111, 118, 101, 32, 104,
+                  101, 114, 101, 32, 116, 111, 32, 99, 114, 101, 97, 116, 101, 32, 97, 32,
+                  114, 97, 119, 32, 115, 97, 118, 32, 98, 121, 32, 101, 120, 99, 108, 117,
+                  100, 105, 110, 103, 32, 116, 104, 105, 115, 32, 68, 101, 83, 109, 117, 77,
+                  69, 32, 115, 97, 118, 101, 100, 97, 116, 97, 32, 102, 111, 111, 116, 101,
+                  114, 58, 0, 0, 1 ,0 , 0, 0, 1, 0, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0,
+                  0, 0, 0, 124, 45, 68, 69, 83, 77, 85, 77, 69, 32, 83, 65, 86, 69, 45, 124]
+
+        sav_file = desmume_path / 'Battery' / saved_file_name
+        destination = desmume_path / 'Battery' / f"{self.new_iso.split('.')[0]}.dsv"
+        print(destination)
+        binary = bytearray(footer)
+        with open(sav_file, 'rb') as inFile:
+            with open(destination, 'wb') as outFile:
+                contents = inFile.read()
+                outFile.write(contents)
+                outFile.write(binary)
 
     def get_style_pointers(self, file: FileIO, ptr_range: tuple[int, int], base_offset: int, style: str) -> tuple[
         list[int], list[int]]:
@@ -676,6 +699,7 @@ class ToolsTOH(ToolsTales):
 
                 f.write_uint16_at(_h, val_hi)
                 f.write_uint16_at(_l, val_lo)
+
 
     def get_node_bytes(self, entry_node, pad=False) -> bytes:
 
