@@ -406,9 +406,10 @@ class ToolsTOH(ToolsTales):
         jap_text = xml_node.find('JapaneseText').text
         eng_text = xml_node.find('EnglishText').text
         status = xml_node.find('Status').text
+        notes = xml_node.find('Notes').text
 
         final_text = eng_text or jap_text or ''
-        return jap_text, eng_text, final_text, status
+        return jap_text, eng_text, final_text, status, notes
 
     def copy_translations_menu(self, root_original, translated_path: Path):
 
@@ -432,11 +433,12 @@ class ToolsTOH(ToolsTales):
                 if jap_text in translated_entries:
 
                     translated = translated_entries[jap_text]
-                    if translated_entries[jap_text][4] in ['Proofreading', 'Editing', 'Done']:
 
-                        if translated_entries[jap_text][2] is not None:
-                            entry_node.find('EnglishText').text = translated_entries[jap_text][2]
+                    if translated_entries[jap_text][2] is not None:
+                        entry_node.find('EnglishText').text = translated_entries[jap_text][2]
                         entry_node.find('Status').text = translated_entries[jap_text][4]
+                        entry_node.find('Notes').text = translated_entries[jap_text][5]
+
                 else:
                     t = 2
                     #print(f'String: {jap_text} was not found in translated XML')
