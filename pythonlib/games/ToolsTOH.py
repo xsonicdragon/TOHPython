@@ -323,6 +323,7 @@ class ToolsTOH(ToolsTales):
                 contents = inFile.read()
                 outFile.write(contents)
                 outFile.write(binary)
+        os.remove(sav_file)
 
     def get_style_pointers(self, file: FileIO, ptr_range: tuple[int, int], base_offset: int, style: str) -> tuple[
         list[int], list[int]]:
