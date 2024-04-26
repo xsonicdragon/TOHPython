@@ -296,10 +296,33 @@ class ToolsTOH(ToolsTales):
         if saved_file_name != '':
             destination = desmume_path / 'Battery' / saved_file_name
             shutil.copy(self.paths['saved_files'] / saved_file_name, destination)
-            new_saved_name = f"{self.new_iso.split('.')[0]}.dsv"
-            os.rename(destination, destination.parent / new_saved_name)
 
+            if saved_file_name.endswith('.sav'):
+                self.convert_sav_to_dsv(desmume_path, saved_file_name)
 
+            else:
+                new_saved_name = f"{self.new_iso.split('.')[0]}.dsv"
+                os.rename(destination, destination.parent / new_saved_name)
+
+    def convert_sav_to_dsv(self, desmume_path:Path, saved_file_name:str):
+        trimSize = 122
+        footer = [124, 60, 45, 45, 83, 110, 105, 112, 32, 97, 98, 111, 118, 101, 32, 104,
+                  101, 114, 101, 32, 116, 111, 32, 99, 114, 101, 97, 116, 101, 32, 97, 32,
+                  114, 97, 119, 32, 115, 97, 118, 32, 98, 121, 32, 101, 120, 99, 108, 117,
+                  100, 105, 110, 103, 32, 116, 104, 105, 115, 32, 68, 101, 83, 109, 117, 77,
+                  69, 32, 115, 97, 118, 101, 100, 97, 116, 97, 32, 102, 111, 111, 116, 101,
+                  114, 58, 0, 0, 1 ,0 , 0, 0, 1, 0, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0,
+                  0, 0, 0, 124, 45, 68, 69, 83, 77, 85, 77, 69, 32, 83, 65, 86, 69, 45, 124]
+
+        sav_file = desmume_path / 'Battery' / saved_file_name
+        destination = desmume_path / 'Battery' / f"{self.new_iso.split('.')[0]}.dsv"
+        print(destination)
+        binary = bytearray(footer)
+        with open(sav_file, 'rb') as inFile:
+            with open(destination, 'wb') as outFile:
+                contents = inFile.read()
+                outFile.write(contents)
+                outFile.write(binary)
 
     def get_style_pointers(self, file: FileIO, ptr_range: tuple[int, int], base_offset: int, style: str) -> tuple[
         list[int], list[int]]:
@@ -406,9 +429,10 @@ class ToolsTOH(ToolsTales):
         jap_text = xml_node.find('JapaneseText').text
         eng_text = xml_node.find('EnglishText').text
         status = xml_node.find('Status').text
+        notes = xml_node.find('Notes').text
 
         final_text = eng_text or jap_text or ''
-        return jap_text, eng_text, final_text, status
+        return jap_text, eng_text, final_text, status, notes
 
     def copy_translations_menu(self, root_original, translated_path: Path):
 
@@ -432,11 +456,12 @@ class ToolsTOH(ToolsTales):
                 if jap_text in translated_entries:
 
                     translated = translated_entries[jap_text]
-                    if translated_entries[jap_text][4] in ['Proofreading', 'Editing', 'Done']:
 
-                        if translated_entries[jap_text][2] is not None:
-                            entry_node.find('EnglishText').text = translated_entries[jap_text][2]
+                    if translated_entries[jap_text][2] is not None:
+                        entry_node.find('EnglishText').text = translated_entries[jap_text][2]
                         entry_node.find('Status').text = translated_entries[jap_text][4]
+                        entry_node.find('Notes').text = translated_entries[jap_text][5]
+
                 else:
                     t = 2
                     #print(f'String: {jap_text} was not found in translated XML')
@@ -674,6 +699,7 @@ class ToolsTOH(ToolsTales):
 
                 f.write_uint16_at(_h, val_hi)
                 f.write_uint16_at(_l, val_lo)
+
 
     def get_node_bytes(self, entry_node, pad=False) -> bytes:
 
