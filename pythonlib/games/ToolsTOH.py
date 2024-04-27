@@ -594,7 +594,7 @@ class ToolsTOH(ToolsTales):
         for entry in tqdm(menu_json, total=len(menu_json), desc='Inserting Menu Files'):
 
 
-            if entry["friendly_name"] in ['Arm9', 'Consumables', 'Sorma Skill', 'Outline', 'Overlay 3']:
+            if entry["friendly_name"] in ['Arm9', 'Consumables', 'Sorma Skill', 'Outline', 'Overlay 3', 'Soma Data', 'Strategy']:
                 # Copy original files
 
                 orig = self.paths["extracted_files"] / entry["file_path"]
@@ -683,7 +683,7 @@ class ToolsTOH(ToolsTales):
                     break
             else:
                 print("Ran out of space")
-                raise ValueError("Ran out of space")
+                raise ValueError(f'Ran out of space in file: {root.find("Strings").find("Section").text}')
 
             f.seek(str_pos)
             f.write(text_bytes)
