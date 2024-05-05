@@ -164,20 +164,21 @@ class ToolsTOH(ToolsTales):
             f.seek(0)
             return f.read()
 
-
-    def update_overlays(self, romnds:rom):
+    def update_overlays(self, romnds: rom, overlays_id: list):
         table = loadOverlayTable(romnds.arm9OverlayTable, lambda x, y: bytes())
-        ov3 = table[3]
-        ov3.compressed = True
 
-        self.compress_overlays()
-        with open(self.paths['final_files'] / 'overlay/overlay_0003.bin', 'rb') as f:
-            data_compressed = f.read()
+        for id in overlays_id:
+            ov3 = table[id]
+            ov3.compressed = True
 
-        ov3.compressedSize = len(data_compressed)
-        #ov3.ramSize = len(data_compressed)
+            self.compress_overlays()
+            with open(self.paths['final_files'] / f'overlay/overlay_000{id}.bin', 'rb') as f:
+                data_compressed = f.read()
+
+            ov3.compressedSize = len(data_compressed)
+            romnds.files[ov3.fileID] = data_compressed
+
         romnds.arm9OverlayTable = saveOverlayTable(table)
-        romnds.files[ov3.fileID] = data_compressed
 
 
 
@@ -210,7 +211,7 @@ class ToolsTOH(ToolsTales):
                     path_file = path_file.replace('data/', '')
                     romnds.setFileByName(path_file, data)
 
-        self.update_overlays(romnds)
+        self.update_overlays(romnds, [0,3])
         romnds.saveToFile(self.paths['game_builds'] / self.new_iso)
 
 
@@ -594,7 +595,7 @@ class ToolsTOH(ToolsTales):
         for entry in tqdm(menu_json, total=len(menu_json), desc='Inserting Menu Files'):
 
 
-            if entry["friendly_name"] in ['Arm9', 'Consumables', 'Sorma Skill', 'Outline', 'Overlay 3', 'Soma Data', 'Strategy']:
+            if entry["friendly_name"] in ['Arm9', 'Consumables', 'Sorma Skill', 'Outline', 'Overlay 0', 'Overlay 3', 'Soma Data', 'Strategy']:
                 # Copy original files
 
                 orig = self.paths["extracted_files"] / entry["file_path"]
