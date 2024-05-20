@@ -296,4 +296,4 @@ class Tss():
         texts_offset = [text_entry.text_offset for key, struct_entry in self.struct_dict.items() for text_entry in struct_entry.texts_entry]
         texts_offset.sort()
         text_offset = min(texts_offset[1:], default=None)
-        return min(speaker_offset, text_offset)
+        return min(speaker_offset or 100000000, text_offset)
