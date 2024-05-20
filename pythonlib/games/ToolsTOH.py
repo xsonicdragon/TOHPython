@@ -595,7 +595,7 @@ class ToolsTOH(ToolsTales):
         for entry in tqdm(menu_json, total=len(menu_json), desc='Inserting Menu Files'):
 
 
-            if entry["friendly_name"] in ['Arm9', 'Consumables', 'Sorma Skill', 'Outline', 'Overlay 0', 'Overlay 3', 'Soma Data', 'Strategy']:
+            if entry["friendly_name"] in ['Arm9', 'Consumables', 'Sorma Skill', 'Outline', 'Overlay 0', 'Overlay 3', 'Soma Data', 'Strategy', 'Battle Memo']:
                 # Copy original files
 
                 orig = self.paths["extracted_files"] / entry["file_path"]
