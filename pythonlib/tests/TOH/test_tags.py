@@ -19,8 +19,9 @@ def test_colors_to_text(config_bytes, n):
         f.write(b'\x00')
         f.seek(0)
         expected = config_bytes[n]['text']
-        res = bytes_to_text(f,0)[0]
+        res, buffer = bytes_to_text(f,0)
         assert res == expected
+        assert buffer == input_bytes
 
 
 @pytest.mark.parametrize("n", [3,4,5])
@@ -32,8 +33,9 @@ def test_names_to_text(config_bytes, n):
         f.write(b'\x00')
         f.seek(0)
         expected = config_bytes[n]['text']
-        res = bytes_to_text(f, 0)[0]
+        res, buffer = bytes_to_text(f, 0)
         assert res == expected
+        assert buffer == input_bytes
 
 
 @pytest.mark.parametrize("n", [6,7,8])
@@ -45,8 +47,9 @@ def test_buttons_to_text(config_bytes, n):
         f.write(b'\x00')
         f.seek(0)
         expected = config_bytes[n]['text']
-        res = bytes_to_text(f, 0)[0]
+        res, buffer = bytes_to_text(f, 0)
         assert res == expected
+        assert buffer == input_bytes
 
 
 @pytest.mark.parametrize("n", [9,10,11,12,13,14])
@@ -58,8 +61,9 @@ def test_voiceid_to_text(config_bytes, n):
         f.write(b'\x00')
         f.seek(0)
         expected = config_bytes[n]['text']
-        res = bytes_to_text(f, 0)[0]
+        res, buffer = bytes_to_text(f, 0)
         assert res == expected
+        assert buffer == input_bytes
 
 
 @pytest.mark.parametrize("n", [0,1,2])
