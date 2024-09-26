@@ -23,32 +23,39 @@ for k, v in jsonTblTags.items():
     else:
         ijsonTblTags[k] = {v2: hex(k2).replace('0x', '').upper() for k2, v2 in v.items()}
 iTags = {v2.upper(): k2 for k2, v2 in jsonTblTags['TAGS'].items()}
-def bytes_to_text(src: FileIO, offset: int = -1) -> str:
+def bytes_to_text(src: FileIO, offset: int = -1) -> (str, bytes):
     finalText = ""
     chars = jsonTblTags['TBL']
 
     if (offset > 0):
         src.seek(offset, 0)
-    buffer = b''
+    buffer = []
     while True:
         b = src.read(1)
 
         if b == b"\x00": break
 
-        buffer += b
+
         b = ord(b)
+        buffer.append(b)
+
         # Button
         if b == 0x81:
             next_b = src.read(1)
             if ord(next_b) in jsonTblTags['BUTTON'].keys():
                 finalText += f"<{jsonTblTags['BUTTON'].get(ord(next_b))}>"
+                buffer.append(ord(next_b))
                 continue
             else:
                 src.seek(src.tell( ) -1 ,0)
 
+
+
         # Custom Encoded Text
         if (0x80 <= b <= 0x9F) or (0xE0 <= b <= 0xEA):
-            c = (b << 8) | src.read_uint8()
+            v  = src.read_uint8()
+            c = (b << 8) | v
+            buffer.append(v)
             finalText += chars.get(c, "{%02X}{%02X}" % (c >> 8, c & 0xFF))
             continue
 
@@ -63,6 +70,10 @@ def bytes_to_text(src: FileIO, offset: int = -1) -> str:
             while src.read(1) != b"\x29":
                 src.seek(src.tell() - 1)
                 val += src.read(1).decode("cp932")
+
+            buffer.extend(list(val.encode("cp932")))
+            buffer.append(0x29)
+
             val += ">"
             val = val.replace('(', '<')
 
@@ -86,12 +97,15 @@ def bytes_to_text(src: FileIO, offset: int = -1) -> str:
 
             if ord(src.read(1) )== 0x28:
                 tag_name = jsonTblTags['TAGS'].get(b)
+                buffer.append(0x28)
 
                 b_v = b''
                 while b_v != b'\x29':
                     b_v = src.read(1)
                     b_value += b_v
                 b_value = b_value[:-1]
+                buffer.extend(list(b_value))
+                buffer.append(0x29)
 
                 parameter = int.from_bytes(b_value, "big")
                 tag_param = jsonTblTags.get(tag_name.upper(), {}).get(parameter, None)
@@ -110,7 +124,8 @@ def bytes_to_text(src: FileIO, offset: int = -1) -> str:
 
         finalText += "{%02X}" % b
 
-    return finalText, buffer
+    return finalText, bytes(buffer)
+
 
 def text_to_bytes(text:str):
     multi_regex = (HEX_TAG + "|" + COMMON_TAG + r"|(\n)")
